@@ -1,4 +1,9 @@
 {
+  "name": "manutencao-preventiva",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Webapp para gestão de manutenções preventivas recorrentes com lembretes via WhatsApp.",
+  "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
@@ -6,10 +11,13 @@
   },
   "dependencies": {
     "@vitejs/plugin-react": "latest",
-    "vite": "latest",
+    "autoprefixer": "latest",
+    "lucide-react": "latest",
+    "postcss": "latest",
     "react": "latest",
     "react-dom": "latest",
-    "lucide-react": "latest"
+    "tailwindcss": "^3.4.17",
+    "vite": "latest"
   },
   "devDependencies": {}
 }
