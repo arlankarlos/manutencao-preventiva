@@ -1,230 +1,719 @@
-import React, { useEffect, useMemo, useState } from "react"; import { Card, CardContent } from "@/components/ui/card"; import { Button } from "@/components/ui/button"; import { Input } from "@/components/ui/input"; import { Textarea } from "@/components/ui/textarea"; import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"; import { Badge } from "@/components/ui/badge"; import { CalendarDays, Copy, MessageCircle, Plus, Trash2, Bell, Search } from "lucide-react";
+import React, { useEffect, useMemo, useState } from "react";
+import {
+  Bell,
+  CalendarDays,
+  Copy,
+  MessageCircle,
+  Plus,
+  Search,
+  Trash2,
+  Wrench,
+  RotateCcw,
+} from "lucide-react";
 
-const STORAGE_KEY = "ac_maintenance_clients_v1"; const TEMPLATE_KEY = "ac_maintenance_message_template_v1";
+const STORAGE_KEY = "manutencao_preventiva_clientes_v1";
+const TEMPLATE_KEY = "manutencao_preventiva_template_v1";
 
-const DEFAULT_TEMPLATE = Olá, {nome}! Tudo bem?\n\nAqui é o Técnico {tecnico}. Estou entrando em contato para lembrar que a próxima limpeza/manutenção do seu ar-condicionado está agendada para {data}.\n\nEndereço: {endereco}\nAparelhos: {aparelhos}\n\nAr limpo, respiração melhor. Posso confirmar sua visita?;
+const DEFAULT_TEMPLATE = `Olá, {nome}! Tudo bem?
 
-function addInterval(dateString, intervalType, intervalValue) { const date = new Date(dateString + "T12:00:00"); const value = Number(intervalValue || 0); if (intervalType === "weeks") date.setDate(date.getDate() + value * 7); if (intervalType === "months") date.setMonth(date.getMonth() + value); return date.toISOString().slice(0, 10); }
+Aqui é o Técnico {tecnico}. Estou entrando em contato para lembrar que sua próxima manutenção preventiva está agendada para {data}.
 
-function formatDate(dateString) { if (!dateString) return ""; const [y, m, d] = dateString.split("-"); return ${d}/${m}/${y}; }
+Endereço: {endereco}
+Itens/equipamentos: {itens}
 
-function onlyNumbers(value) { return String(value || "").replace(/\D/g, ""); }
+Podemos confirmar sua visita?`;
 
-function statusFor(dateString) { const today = new Date(); today.setHours(0, 0, 0, 0); const target = new Date(dateString + "T00:00:00"); const diff = Math.ceil((target - today) / (1000 * 60 * 60 * 24)); if (diff < 0) return { label: "Atrasado", tone: "destructive", days: diff }; if (diff === 0) return { label: "Hoje", tone: "default", days: diff }; if (diff <= 7) return { label: Em ${diff} dia(s), tone: "secondary", days: diff }; return { label: Em ${diff} dia(s), tone: "outline", days: diff }; }
+function addInterval(dateString, intervalType, intervalValue) {
+  const date = new Date(dateString + "T12:00:00");
+  const value = Number(intervalValue || 1);
 
-function buildMessage(template, client, technicianName) { const aparelhos = client.appliances .map((item, index) => ${index + 1}. ${item.quantity}x ${item.model}) .join("; ");
+  if (intervalType === "weeks") {
+    date.setDate(date.getDate() + value * 7);
+  }
 
-return template .replaceAll("{nome}", client.name || "cliente") .replaceAll("{tecnico}", technicianName || "responsável") .replaceAll("{telefone}", client.phone || "") .replaceAll("{endereco}", client.address || "") .replaceAll("{data}", formatDate(client.nextVisitDate)) .replaceAll("{aparelhos}", aparelhos || "não informado"); }
+  if (intervalType === "months") {
+    date.setMonth(date.getMonth() + value);
+  }
 
-export default function App() { const [technicianName, setTechnicianName] = useState("Tiago"); const [template, setTemplate] = useState(DEFAULT_TEMPLATE); const [clients, setClients] = useState([]); const [query, setQuery] = useState(""); const [copiedId, setCopiedId] = useState(null);
-
-const [form, setForm] = useState({ name: "", phone: "", address: "", baseDate: new Date().toISOString().slice(0, 10), intervalType: "months", intervalValue: "6", appliances: [{ quantity: "1", model: "Split 9.000 BTUs" }], });
-
-useEffect(() => { const savedClients = localStorage.getItem(STORAGE_KEY); const savedTemplate = localStorage.getItem(TEMPLATE_KEY); if (savedClients) setClients(JSON.parse(savedClients)); if (savedTemplate) setTemplate(savedTemplate); }, []);
-
-useEffect(() => { localStorage.setItem(STORAGE_KEY, JSON.stringify(clients)); }, [clients]);
-
-useEffect(() => { localStorage.setItem(TEMPLATE_KEY, template); }, [template]);
-
-const nextVisitDate = useMemo(() => { return addInterval(form.baseDate, form.intervalType, form.intervalValue); }, [form.baseDate, form.intervalType, form.intervalValue]);
-
-const filteredClients = useMemo(() => { const q = query.toLowerCase().trim(); return clients .filter((client) => { if (!q) return true; return [client.name, client.phone, client.address] .join(" ") .toLowerCase() .includes(q); }) .sort((a, b) => new Date(a.nextVisitDate) - new Date(b.nextVisitDate)); }, [clients, query]);
-
-function updateAppliance(index, field, value) { setForm((prev) => ({ ...prev, appliances: prev.appliances.map((item, i) => i === index ? { ...item, [field]: value } : item ), })); }
-
-function addAppliance() { setForm((prev) => ({ ...prev, appliances: [...prev.appliances, { quantity: "1", model: "" }], })); }
-
-function removeAppliance(index) { setForm((prev) => ({ ...prev, appliances: prev.appliances.filter((_, i) => i !== index), })); }
-
-function createClient() { if (!form.name.trim()) return alert("Informe o nome do cliente."); if (!form.phone.trim()) return alert("Informe o telefone do cliente.");
-
-const client = {
-  id: crypto.randomUUID(),
-  name: form.name.trim(),
-  phone: form.phone.trim(),
-  address: form.address.trim(),
-  baseDate: form.baseDate,
-  intervalType: form.intervalType,
-  intervalValue: form.intervalValue,
-  nextVisitDate,
-  appliances: form.appliances.filter((item) => item.model.trim()),
-  createdAt: new Date().toISOString(),
-};
-
-setClients((prev) => [client, ...prev]);
-setForm({
-  name: "",
-  phone: "",
-  address: "",
-  baseDate: new Date().toISOString().slice(0, 10),
-  intervalType: "months",
-  intervalValue: "6",
-  appliances: [{ quantity: "1", model: "Split 9.000 BTUs" }],
-});
-
+  return date.toISOString().slice(0, 10);
 }
 
-function deleteClient(id) { setClients((prev) => prev.filter((client) => client.id !== id)); }
+function formatDate(dateString) {
+  if (!dateString) return "";
+  const [year, month, day] = dateString.split("-");
+  return `${day}/${month}/${year}`;
+}
 
-function renewVisit(client) { const newDate = addInterval(client.nextVisitDate, client.intervalType, client.intervalValue); setClients((prev) => prev.map((item) => item.id === client.id ? { ...item, baseDate: client.nextVisitDate, nextVisitDate: newDate } : item ) ); }
+function onlyNumbers(value) {
+  return String(value || "").replace(/\D/g, "");
+}
 
-async function copyMessage(client) { const message = buildMessage(template, client, technicianName); await navigator.clipboard.writeText(message); setCopiedId(client.id); setTimeout(() => setCopiedId(null), 1600); }
+function getVisitStatus(dateString) {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
 
-function openWhatsApp(client) { const phone = onlyNumbers(client.phone); const message = encodeURIComponent(buildMessage(template, client, technicianName)); window.open(https://wa.me/55${phone}?text=${message}, "_blank"); }
+  const target = new Date(dateString + "T00:00:00");
+  const diffDays = Math.ceil((target - today) / (1000 * 60 * 60 * 24));
 
-return ( <div className="min-h-screen bg-slate-50 p-4 md:p-8 text-slate-900"> <div className="mx-auto max-w-7xl space-y-6"> <header className="rounded-3xl bg-gradient-to-r from-blue-900 to-cyan-700 p-6 text-white shadow-lg"> <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between"> <div> <h1 className="text-3xl md:text-4xl font-black tracking-tight">Agenda de Manutenção de Ar-Condicionado</h1> <p className="mt-2 text-blue-100">Cadastre clientes, aparelhos, próximas visitas e envie lembretes pelo WhatsApp.</p> </div> <div className="w-full md:w-72"> <label className="text-sm text-blue-100">Nome do técnico</label> <Input value={technicianName} onChange={(e) => setTechnicianName(e.target.value)} className="mt-1 bg-white text-slate-900" /> </div> </div> </header>
+  if (diffDays < 0) {
+    return {
+      label: `Atrasado há ${Math.abs(diffDays)} dia(s)`,
+      className: "bg-red-100 text-red-700 border-red-200",
+      priority: 0,
+    };
+  }
 
-<div className="grid gap-6 lg:grid-cols-[1fr_1.2fr]">
-      <Card className="rounded-3xl shadow-sm">
-        <CardContent className="p-5 space-y-4">
-          <h2 className="text-xl font-bold flex items-center gap-2"><Plus size={20}/> Novo cadastro</h2>
+  if (diffDays === 0) {
+    return {
+      label: "Hoje",
+      className: "bg-yellow-100 text-yellow-800 border-yellow-200",
+      priority: 1,
+    };
+  }
 
-          <div className="grid gap-3 md:grid-cols-2">
+  if (diffDays <= 7) {
+    return {
+      label: `Em ${diffDays} dia(s)`,
+      className: "bg-orange-100 text-orange-700 border-orange-200",
+      priority: 2,
+    };
+  }
+
+  return {
+    label: `Em ${diffDays} dia(s)`,
+    className: "bg-blue-100 text-blue-700 border-blue-200",
+    priority: 3,
+  };
+}
+
+function buildMessage(template, client, technicianName) {
+  const itens = client.items
+    .map((item, index) => `${index + 1}. ${item.quantity}x ${item.model}`)
+    .join("; ");
+
+  return template
+    .replaceAll("{nome}", client.name || "cliente")
+    .replaceAll("{tecnico}", technicianName || "responsável")
+    .replaceAll("{telefone}", client.phone || "")
+    .replaceAll("{endereco}", client.address || "")
+    .replaceAll("{data}", formatDate(client.nextVisitDate))
+    .replaceAll("{itens}", itens || "não informado")
+    .replaceAll("{aparelhos}", itens || "não informado");
+}
+
+export default function App() {
+  const [technicianName, setTechnicianName] = useState("Tiago");
+  const [template, setTemplate] = useState(DEFAULT_TEMPLATE);
+  const [clients, setClients] = useState([]);
+  const [query, setQuery] = useState("");
+  const [copiedId, setCopiedId] = useState(null);
+
+  const [form, setForm] = useState({
+    name: "",
+    phone: "",
+    address: "",
+    baseDate: new Date().toISOString().slice(0, 10),
+    intervalType: "months",
+    intervalValue: "6",
+    items: [{ quantity: "1", model: "Ar-condicionado Split 9.000 BTUs" }],
+  });
+
+  useEffect(() => {
+    const savedClients = localStorage.getItem(STORAGE_KEY);
+    const savedTemplate = localStorage.getItem(TEMPLATE_KEY);
+
+    if (savedClients) {
+      setClients(JSON.parse(savedClients));
+    }
+
+    if (savedTemplate) {
+      setTemplate(savedTemplate);
+    }
+  }, []);
+
+  useEffect(() => {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(clients));
+  }, [clients]);
+
+  useEffect(() => {
+    localStorage.setItem(TEMPLATE_KEY, template);
+  }, [template]);
+
+  const nextVisitDate = useMemo(() => {
+    return addInterval(form.baseDate, form.intervalType, form.intervalValue);
+  }, [form.baseDate, form.intervalType, form.intervalValue]);
+
+  const filteredClients = useMemo(() => {
+    const search = query.toLowerCase().trim();
+
+    return clients
+      .filter((client) => {
+        if (!search) return true;
+
+        return [
+          client.name,
+          client.phone,
+          client.address,
+          client.items.map((item) => item.model).join(" "),
+        ]
+          .join(" ")
+          .toLowerCase()
+          .includes(search);
+      })
+      .sort((a, b) => {
+        const statusA = getVisitStatus(a.nextVisitDate);
+        const statusB = getVisitStatus(b.nextVisitDate);
+
+        if (statusA.priority !== statusB.priority) {
+          return statusA.priority - statusB.priority;
+        }
+
+        return new Date(a.nextVisitDate) - new Date(b.nextVisitDate);
+      });
+  }, [clients, query]);
+
+  function updateItem(index, field, value) {
+    setForm((prev) => ({
+      ...prev,
+      items: prev.items.map((item, itemIndex) =>
+        itemIndex === index ? { ...item, [field]: value } : item
+      ),
+    }));
+  }
+
+  function addItem() {
+    setForm((prev) => ({
+      ...prev,
+      items: [...prev.items, { quantity: "1", model: "" }],
+    }));
+  }
+
+  function removeItem(index) {
+    setForm((prev) => ({
+      ...prev,
+      items: prev.items.filter((_, itemIndex) => itemIndex !== index),
+    }));
+  }
+
+  function createClient() {
+    if (!form.name.trim()) {
+      alert("Informe o nome do cliente.");
+      return;
+    }
+
+    if (!form.phone.trim()) {
+      alert("Informe o telefone do cliente.");
+      return;
+    }
+
+    const validItems = form.items.filter((item) => item.model.trim());
+
+    const newClient = {
+      id: crypto.randomUUID(),
+      name: form.name.trim(),
+      phone: form.phone.trim(),
+      address: form.address.trim(),
+      baseDate: form.baseDate,
+      intervalType: form.intervalType,
+      intervalValue: form.intervalValue,
+      nextVisitDate,
+      items: validItems.length
+        ? validItems
+        : [{ quantity: "1", model: "Item não informado" }],
+      createdAt: new Date().toISOString(),
+    };
+
+    setClients((prev) => [newClient, ...prev]);
+
+    setForm({
+      name: "",
+      phone: "",
+      address: "",
+      baseDate: new Date().toISOString().slice(0, 10),
+      intervalType: "months",
+      intervalValue: "6",
+      items: [{ quantity: "1", model: "Ar-condicionado Split 9.000 BTUs" }],
+    });
+  }
+
+  function deleteClient(id) {
+    const confirmDelete = window.confirm("Deseja excluir este cliente?");
+    if (!confirmDelete) return;
+
+    setClients((prev) => prev.filter((client) => client.id !== id));
+  }
+
+  function renewVisit(client) {
+    const newDate = addInterval(
+      client.nextVisitDate,
+      client.intervalType,
+      client.intervalValue
+    );
+
+    setClients((prev) =>
+      prev.map((item) =>
+        item.id === client.id
+          ? {
+              ...item,
+              baseDate: client.nextVisitDate,
+              nextVisitDate: newDate,
+            }
+          : item
+      )
+    );
+  }
+
+  async function copyMessage(client) {
+    const message = buildMessage(template, client, technicianName);
+
+    try {
+      await navigator.clipboard.writeText(message);
+      setCopiedId(client.id);
+
+      setTimeout(() => {
+        setCopiedId(null);
+      }, 1500);
+    } catch {
+      alert("Não foi possível copiar a mensagem.");
+    }
+  }
+
+  function openWhatsApp(client) {
+    const phone = onlyNumbers(client.phone);
+    const message = encodeURIComponent(
+      buildMessage(template, client, technicianName)
+    );
+
+    if (!phone) {
+      alert("Telefone inválido.");
+      return;
+    }
+
+    window.open(`https://wa.me/55${phone}?text=${message}`, "_blank");
+  }
+
+  return (
+    <div className="min-h-screen bg-slate-100 text-slate-900">
+      <div className="mx-auto max-w-7xl p-4 md:p-8">
+        <header className="mb-6 rounded-3xl bg-gradient-to-r from-blue-950 via-blue-800 to-cyan-700 p-6 text-white shadow-xl">
+          <div className="flex flex-col gap-6 md:flex-row md:items-end md:justify-between">
             <div>
-              <label className="text-sm font-medium">Nome do cliente</label>
-              <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="Ex: Maria Silva" />
-            </div>
-            <div>
-              <label className="text-sm font-medium">Telefone / WhatsApp</label>
-              <Input value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} placeholder="62 99106-2200" />
-            </div>
-          </div>
-
-          <div>
-            <label className="text-sm font-medium">Endereço</label>
-            <Input value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} placeholder="Rua, número, bairro, cidade" />
-          </div>
-
-          <div className="rounded-2xl border p-4 space-y-3 bg-white">
-            <div className="flex items-center justify-between gap-2">
-              <h3 className="font-bold">Aparelhos</h3>
-              <Button variant="outline" size="sm" onClick={addAppliance}>Adicionar</Button>
-            </div>
-            {form.appliances.map((item, index) => (
-              <div key={index} className="grid grid-cols-[80px_1fr_40px] gap-2 items-end">
-                <div>
-                  <label className="text-xs">Qtd.</label>
-                  <Input value={item.quantity} onChange={(e) => updateAppliance(index, "quantity", e.target.value)} />
-                </div>
-                <div>
-                  <label className="text-xs">Modelo</label>
-                  <Input value={item.model} onChange={(e) => updateAppliance(index, "model", e.target.value)} placeholder="Ex: Split 12.000 BTUs inverter" />
-                </div>
-                <Button variant="ghost" size="icon" onClick={() => removeAppliance(index)} disabled={form.appliances.length === 1}>
-                  <Trash2 size={18}/>
-                </Button>
+              <div className="mb-3 inline-flex items-center gap-2 rounded-full bg-white/15 px-4 py-2 text-sm font-semibold">
+                <Wrench size={16} />
+                Manutenção Preventiva
               </div>
-            ))}
+
+              <h1 className="text-3xl font-black tracking-tight md:text-5xl">
+                Agenda de Manutenção
+              </h1>
+
+              <p className="mt-3 max-w-2xl text-blue-100">
+                Cadastre clientes, controle visitas recorrentes e envie lembretes
+                prontos pelo WhatsApp.
+              </p>
+            </div>
+
+            <div className="w-full md:w-80">
+              <label className="mb-1 block text-sm font-semibold text-blue-100">
+                Nome do técnico
+              </label>
+              <input
+                value={technicianName}
+                onChange={(event) => setTechnicianName(event.target.value)}
+                className="w-full rounded-2xl border border-white/20 bg-white px-4 py-3 text-slate-900 outline-none ring-blue-300 focus:ring-4"
+                placeholder="Ex: Tiago"
+              />
+            </div>
           </div>
+        </header>
 
-          <div className="grid gap-3 md:grid-cols-3">
-            <div>
-              <label className="text-sm font-medium">Última visita</label>
-              <Input type="date" value={form.baseDate} onChange={(e) => setForm({ ...form, baseDate: e.target.value })} />
-            </div>
-            <div>
-              <label className="text-sm font-medium">Repetir a cada</label>
-              <Input type="number" min="1" value={form.intervalValue} onChange={(e) => setForm({ ...form, intervalValue: e.target.value })} />
-            </div>
-            <div>
-              <label className="text-sm font-medium">Período</label>
-              <Select value={form.intervalType} onValueChange={(value) => setForm({ ...form, intervalType: value })}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="weeks">Semanas</SelectItem>
-                  <SelectItem value="months">Meses</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-
-          <div className="rounded-2xl bg-blue-50 border border-blue-100 p-4 flex items-center justify-between">
-            <div>
-              <p className="text-sm text-blue-700">Data calculada da próxima visita</p>
-              <p className="text-2xl font-black text-blue-950">{formatDate(nextVisitDate)}</p>
-            </div>
-            <CalendarDays className="text-blue-700" />
-          </div>
-
-          <Button className="w-full rounded-2xl text-base font-bold" onClick={createClient}>Salvar cliente</Button>
-        </CardContent>
-      </Card>
-
-      <div className="space-y-6">
-        <Card className="rounded-3xl shadow-sm">
-          <CardContent className="p-5 space-y-3">
-            <h2 className="text-xl font-bold flex items-center gap-2"><MessageCircle size={20}/> Mensagem padrão do WhatsApp</h2>
-            <p className="text-sm text-slate-500">Use: {"{nome}"}, {"{tecnico}"}, {"{telefone}"}, {"{endereco}"}, {"{data}"}, {"{aparelhos}"}</p>
-            <Textarea className="min-h-36" value={template} onChange={(e) => setTemplate(e.target.value)} />
-            <Button variant="outline" onClick={() => setTemplate(DEFAULT_TEMPLATE)}>Restaurar padrão</Button>
-          </CardContent>
-        </Card>
-
-        <Card className="rounded-3xl shadow-sm">
-          <CardContent className="p-5 space-y-4">
-            <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-              <h2 className="text-xl font-bold flex items-center gap-2"><Bell size={20}/> Alarmes e próximas visitas</h2>
-              <div className="relative md:w-80">
-                <Search className="absolute left-3 top-3 text-slate-400" size={17}/>
-                <Input className="pl-9" placeholder="Buscar cliente, telefone ou endereço" value={query} onChange={(e) => setQuery(e.target.value)} />
+        <main className="grid gap-6 lg:grid-cols-[1fr_1.25fr]">
+          <section className="rounded-3xl bg-white p-5 shadow-sm">
+            <div className="mb-5 flex items-center gap-2">
+              <div className="rounded-2xl bg-blue-100 p-3 text-blue-700">
+                <Plus size={20} />
+              </div>
+              <div>
+                <h2 className="text-xl font-black">Novo cadastro</h2>
+                <p className="text-sm text-slate-500">
+                  Registre cliente, equipamentos e recorrência.
+                </p>
               </div>
             </div>
 
-            {filteredClients.length === 0 ? (
-              <div className="rounded-2xl border border-dashed p-8 text-center text-slate-500">Nenhum cliente cadastrado ainda.</div>
-            ) : (
-              <div className="space-y-3">
-                {filteredClients.map((client) => {
-                  const status = statusFor(client.nextVisitDate);
-                  const message = buildMessage(template, client, technicianName);
-                  return (
-                    <div key={client.id} className="rounded-2xl border bg-white p-4 space-y-3">
-                      <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
-                        <div>
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <h3 className="text-lg font-black">{client.name}</h3>
-                            <Badge variant={status.tone}>{status.label}</Badge>
-                          </div>
-                          <p className="text-sm text-slate-500">{client.phone}</p>
-                          <p className="text-sm text-slate-500">{client.address}</p>
-                        </div>
-                        <div className="text-left md:text-right">
-                          <p className="text-sm text-slate-500">Próxima visita</p>
-                          <p className="text-xl font-black text-blue-900">{formatDate(client.nextVisitDate)}</p>
-                        </div>
+            <div className="space-y-4">
+              <div className="grid gap-3 md:grid-cols-2">
+                <div>
+                  <label className="mb-1 block text-sm font-semibold">
+                    Nome do cliente
+                  </label>
+                  <input
+                    value={form.name}
+                    onChange={(event) =>
+                      setForm({ ...form, name: event.target.value })
+                    }
+                    className="w-full rounded-2xl border px-4 py-3 outline-none ring-blue-200 focus:ring-4"
+                    placeholder="Ex: Maria Silva"
+                  />
+                </div>
+
+                <div>
+                  <label className="mb-1 block text-sm font-semibold">
+                    Telefone / WhatsApp
+                  </label>
+                  <input
+                    value={form.phone}
+                    onChange={(event) =>
+                      setForm({ ...form, phone: event.target.value })
+                    }
+                    className="w-full rounded-2xl border px-4 py-3 outline-none ring-blue-200 focus:ring-4"
+                    placeholder="Ex: 62 99106-2200"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="mb-1 block text-sm font-semibold">
+                  Endereço
+                </label>
+                <input
+                  value={form.address}
+                  onChange={(event) =>
+                    setForm({ ...form, address: event.target.value })
+                  }
+                  className="w-full rounded-2xl border px-4 py-3 outline-none ring-blue-200 focus:ring-4"
+                  placeholder="Rua, número, bairro, cidade"
+                />
+              </div>
+
+              <div className="rounded-3xl border bg-slate-50 p-4">
+                <div className="mb-3 flex items-center justify-between gap-3">
+                  <div>
+                    <h3 className="font-black">Itens / equipamentos</h3>
+                    <p className="text-sm text-slate-500">
+                      Ex: ar-condicionado, bomba, filtro, motor, equipamento.
+                    </p>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={addItem}
+                    className="rounded-2xl border bg-white px-4 py-2 text-sm font-bold hover:bg-slate-100"
+                  >
+                    Adicionar
+                  </button>
+                </div>
+
+                <div className="space-y-3">
+                  {form.items.map((item, index) => (
+                    <div
+                      key={index}
+                      className="grid grid-cols-[80px_1fr_42px] items-end gap-2"
+                    >
+                      <div>
+                        <label className="mb-1 block text-xs font-semibold">
+                          Qtd.
+                        </label>
+                        <input
+                          value={item.quantity}
+                          onChange={(event) =>
+                            updateItem(index, "quantity", event.target.value)
+                          }
+                          className="w-full rounded-2xl border bg-white px-3 py-3 outline-none ring-blue-200 focus:ring-4"
+                        />
                       </div>
 
-                      <div className="rounded-xl bg-slate-50 p-3 text-sm">
-                        <strong>Aparelhos:</strong> {client.appliances.map((a) => `${a.quantity}x ${a.model}`).join(" | ") || "Não informado"}
+                      <div>
+                        <label className="mb-1 block text-xs font-semibold">
+                          Modelo / descrição
+                        </label>
+                        <input
+                          value={item.model}
+                          onChange={(event) =>
+                            updateItem(index, "model", event.target.value)
+                          }
+                          className="w-full rounded-2xl border bg-white px-4 py-3 outline-none ring-blue-200 focus:ring-4"
+                          placeholder="Ex: Split 12.000 BTUs inverter"
+                        />
                       </div>
 
-                      <details className="rounded-xl bg-green-50 p-3 text-sm whitespace-pre-wrap">
-                        <summary className="cursor-pointer font-bold text-green-900">Ver mensagem pronta</summary>
-                        <div className="mt-2">{message}</div>
-                      </details>
-
-                      <div className="flex flex-wrap gap-2">
-                        <Button variant="outline" onClick={() => copyMessage(client)}>
-                          <Copy size={16} className="mr-2"/> {copiedId === client.id ? "Copiado!" : "Copiar mensagem"}
-                        </Button>
-                        <Button onClick={() => openWhatsApp(client)}>
-                          <MessageCircle size={16} className="mr-2"/> Abrir WhatsApp
-                        </Button>
-                        <Button variant="secondary" onClick={() => renewVisit(client)}>Marcar como visitado e reagendar</Button>
-                        <Button variant="ghost" onClick={() => deleteClient(client.id)}>
-                          <Trash2 size={16} className="mr-2"/> Excluir
-                        </Button>
-                      </div>
+                      <button
+                        type="button"
+                        onClick={() => removeItem(index)}
+                        disabled={form.items.length === 1}
+                        className="rounded-2xl p-3 text-red-600 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-30"
+                        title="Remover item"
+                      >
+                        <Trash2 size={18} />
+                      </button>
                     </div>
-                  );
-                })}
+                  ))}
+                </div>
               </div>
-            )}
-          </CardContent>
-        </Card>
+
+              <div className="grid gap-3 md:grid-cols-3">
+                <div>
+                  <label className="mb-1 block text-sm font-semibold">
+                    Última visita
+                  </label>
+                  <input
+                    type="date"
+                    value={form.baseDate}
+                    onChange={(event) =>
+                      setForm({ ...form, baseDate: event.target.value })
+                    }
+                    className="w-full rounded-2xl border px-4 py-3 outline-none ring-blue-200 focus:ring-4"
+                  />
+                </div>
+
+                <div>
+                  <label className="mb-1 block text-sm font-semibold">
+                    Repetir a cada
+                  </label>
+                  <input
+                    type="number"
+                    min="1"
+                    value={form.intervalValue}
+                    onChange={(event) =>
+                      setForm({ ...form, intervalValue: event.target.value })
+                    }
+                    className="w-full rounded-2xl border px-4 py-3 outline-none ring-blue-200 focus:ring-4"
+                  />
+                </div>
+
+                <div>
+                  <label className="mb-1 block text-sm font-semibold">
+                    Período
+                  </label>
+                  <select
+                    value={form.intervalType}
+                    onChange={(event) =>
+                      setForm({ ...form, intervalType: event.target.value })
+                    }
+                    className="w-full rounded-2xl border bg-white px-4 py-3 outline-none ring-blue-200 focus:ring-4"
+                  >
+                    <option value="weeks">Semanas</option>
+                    <option value="months">Meses</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="flex items-center justify-between rounded-3xl border border-blue-100 bg-blue-50 p-4">
+                <div>
+                  <p className="text-sm font-semibold text-blue-700">
+                    Próxima visita calculada
+                  </p>
+                  <p className="text-3xl font-black text-blue-950">
+                    {formatDate(nextVisitDate)}
+                  </p>
+                </div>
+
+                <CalendarDays className="text-blue-700" size={34} />
+              </div>
+
+              <button
+                type="button"
+                onClick={createClient}
+                className="w-full rounded-2xl bg-blue-700 px-5 py-4 text-base font-black text-white shadow-lg shadow-blue-700/20 transition hover:bg-blue-800"
+              >
+                Salvar cliente
+              </button>
+            </div>
+          </section>
+
+          <section className="space-y-6">
+            <div className="rounded-3xl bg-white p-5 shadow-sm">
+              <div className="mb-4 flex items-center gap-2">
+                <div className="rounded-2xl bg-green-100 p-3 text-green-700">
+                  <MessageCircle size={20} />
+                </div>
+                <div>
+                  <h2 className="text-xl font-black">
+                    Mensagem padrão do WhatsApp
+                  </h2>
+                  <p className="text-sm text-slate-500">
+                    Você pode editar o texto e usar variáveis automáticas.
+                  </p>
+                </div>
+              </div>
+
+              <div className="mb-3 rounded-2xl bg-slate-50 p-3 text-sm text-slate-600">
+                Variáveis disponíveis:{" "}
+                <strong>{"{nome}"}</strong>, <strong>{"{tecnico}"}</strong>,{" "}
+                <strong>{"{telefone}"}</strong>, <strong>{"{endereco}"}</strong>,{" "}
+                <strong>{"{data}"}</strong>, <strong>{"{itens}"}</strong>
+              </div>
+
+              <textarea
+                value={template}
+                onChange={(event) => setTemplate(event.target.value)}
+                className="min-h-40 w-full rounded-2xl border px-4 py-3 outline-none ring-green-200 focus:ring-4"
+              />
+
+              <button
+                type="button"
+                onClick={() => setTemplate(DEFAULT_TEMPLATE)}
+                className="mt-3 inline-flex items-center gap-2 rounded-2xl border px-4 py-2 font-bold hover:bg-slate-50"
+              >
+                <RotateCcw size={16} />
+                Restaurar padrão
+              </button>
+            </div>
+
+            <div className="rounded-3xl bg-white p-5 shadow-sm">
+              <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                <div className="flex items-center gap-2">
+                  <div className="rounded-2xl bg-yellow-100 p-3 text-yellow-700">
+                    <Bell size={20} />
+                  </div>
+                  <div>
+                    <h2 className="text-xl font-black">
+                      Alarmes e próximas visitas
+                    </h2>
+                    <p className="text-sm text-slate-500">
+                      Clientes ordenados por prioridade.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="relative w-full md:w-80">
+                  <Search
+                    size={18}
+                    className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400"
+                  />
+                  <input
+                    value={query}
+                    onChange={(event) => setQuery(event.target.value)}
+                    className="w-full rounded-2xl border py-3 pl-11 pr-4 outline-none ring-blue-200 focus:ring-4"
+                    placeholder="Buscar cliente, telefone ou item"
+                  />
+                </div>
+              </div>
+
+              {filteredClients.length === 0 ? (
+                <div className="rounded-3xl border border-dashed p-10 text-center">
+                  <p className="text-lg font-black text-slate-700">
+                    Nenhum cliente cadastrado
+                  </p>
+                  <p className="mt-1 text-slate-500">
+                    Cadastre o primeiro cliente para ver os alarmes aqui.
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {filteredClients.map((client) => {
+                    const status = getVisitStatus(client.nextVisitDate);
+                    const message = buildMessage(
+                      template,
+                      client,
+                      technicianName
+                    );
+
+                    return (
+                      <article
+                        key={client.id}
+                        className="rounded-3xl border bg-white p-4 shadow-sm"
+                      >
+                        <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                          <div>
+                            <div className="flex flex-wrap items-center gap-2">
+                              <h3 className="text-xl font-black">
+                                {client.name}
+                              </h3>
+                              <span
+                                className={`rounded-full border px-3 py-1 text-xs font-black ${status.className}`}
+                              >
+                                {status.label}
+                              </span>
+                            </div>
+
+                            <p className="mt-1 text-sm text-slate-500">
+                              WhatsApp: {client.phone}
+                            </p>
+
+                            <p className="text-sm text-slate-500">
+                              Endereço: {client.address || "Não informado"}
+                            </p>
+                          </div>
+
+                          <div className="rounded-2xl bg-blue-50 p-3 text-left md:text-right">
+                            <p className="text-xs font-bold uppercase text-blue-700">
+                              Próxima visita
+                            </p>
+                            <p className="text-2xl font-black text-blue-950">
+                              {formatDate(client.nextVisitDate)}
+                            </p>
+                          </div>
+                        </div>
+
+                        <div className="mt-4 rounded-2xl bg-slate-50 p-3 text-sm">
+                          <strong>Itens/equipamentos:</strong>{" "}
+                          {client.items
+                            .map((item) => `${item.quantity}x ${item.model}`)
+                            .join(" | ")}
+                        </div>
+
+                        <details className="mt-3 rounded-2xl bg-green-50 p-3 text-sm">
+                          <summary className="cursor-pointer font-black text-green-800">
+                            Ver mensagem pronta
+                          </summary>
+                          <pre className="mt-3 whitespace-pre-wrap font-sans text-slate-700">
+                            {message}
+                          </pre>
+                        </details>
+
+                        <div className="mt-4 flex flex-wrap gap-2">
+                          <button
+                            type="button"
+                            onClick={() => copyMessage(client)}
+                            className="inline-flex items-center gap-2 rounded-2xl border px-4 py-3 font-bold hover:bg-slate-50"
+                          >
+                            <Copy size={16} />
+                            {copiedId === client.id
+                              ? "Copiado!"
+                              : "Copiar mensagem"}
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => openWhatsApp(client)}
+                            className="inline-flex items-center gap-2 rounded-2xl bg-green-600 px-4 py-3 font-bold text-white hover:bg-green-700"
+                          >
+                            <MessageCircle size={16} />
+                            Abrir WhatsApp
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => renewVisit(client)}
+                            className="inline-flex items-center gap-2 rounded-2xl bg-blue-600 px-4 py-3 font-bold text-white hover:bg-blue-700"
+                          >
+                            <CalendarDays size={16} />
+                            Visitado / reagendar
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => deleteClient(client.id)}
+                            className="inline-flex items-center gap-2 rounded-2xl px-4 py-3 font-bold text-red-600 hover:bg-red-50"
+                          >
+                            <Trash2 size={16} />
+                            Excluir
+                          </button>
+                        </div>
+                      </article>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </section>
+        </main>
+
+        <footer className="mt-8 rounded-3xl bg-slate-900 p-5 text-center text-sm text-slate-300">
+          Manutenção em dia gera prevenção, organização e cliente recorrente.
+        </footer>
       </div>
     </div>
-  </div>
-</div>
-
-); }
+  );
+}
